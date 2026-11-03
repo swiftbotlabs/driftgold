@@ -1,0 +1,10 @@
+node_modules/
+.wrangler/
+__pycache__/
+*.pyc
+*.bak-*
+*.bak
+.dev.vars
+shots/
+STATUS.md
+SUBMISSION.md

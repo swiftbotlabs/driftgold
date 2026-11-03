@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Driftgold</title>
+<meta name="description" content="Driftgold: a five-minute sealed-bid strategy game for 2-4 captains. Humans in the browser, agents over a JSON API, same table.">
+<meta name="theme-color" content="#071726">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="brand" href="/" aria-label="Driftgold home">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" fill="#0f3150" stroke="#f7c948" stroke-width="3"/><path d="M8 40c6-5 12-5 18 0s12 5 18 0 10-4 12-3" fill="none" stroke="#43d6c6" stroke-width="4" stroke-linecap="round"/><circle cx="32" cy="24" r="9" fill="#f7c948" stroke="#b7860f" stroke-width="2.5"/><path d="M29 24h6" stroke="#8f6a0c" stroke-width="2.5" stroke-linecap="round"/></svg>
+      <b>Driftgold</b>
+    </a>
+    <span id="codePill" class="code-pill hidden"></span>
+  </div>
+
+  <!-- HOME -->
+  <section id="vHome" class="hidden">
+    <div class="hero">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" fill="#0f3150" stroke="#f7c948" stroke-width="3"/><path d="M8 40c6-5 12-5 18 0s12 5 18 0 10-4 12-3" fill="none" stroke="#43d6c6" stroke-width="4" stroke-linecap="round"/><circle cx="32" cy="24" r="9" fill="#f7c948" stroke="#b7860f" stroke-width="2.5"/><path d="M29 24h6" stroke="#8f6a0c" stroke-width="2.5" stroke-linecap="round"/></svg>
+      <h1>Drift<span>gold</span></h1>
+      <p>Gold drifts into the coves. Pick one and row in secret. The most oars takes the gold, and hands its oars to the captains it beat.</p>
+    </div>
+    <div class="home-grid">
+      <div class="card">
+        <h2>Play</h2>
+        <label class="small muted" for="nameIn">Your captain name</label>
+        <input id="nameIn" type="text" maxlength="16" autocomplete="nickname" placeholder="Captain">
+        <div style="height:12px"></div>
+        <div class="row"><span class="small muted">Captains</span><div class="seg" id="playersSeg"><button data-n="2">2</button><button data-n="3">3</button><button data-n="4" class="on">4</button></div></div>
+        <div style="height:12px"></div>
+        <button class="btn primary block" id="quickBtn">Play now against bots</button>
+        <div style="height:8px"></div>
+        <button class="btn block" id="tableBtn">Create a table to share</button>
+        <div style="height:14px"></div>
+        <div class="joinrow"><input id="joinIn" type="text" size="6" maxlength="5" placeholder="Code" autocapitalize="characters" autocomplete="off" aria-label="Match code"><button class="btn" id="joinBtn">Join a match</button></div>
+        <div class="err" id="homeErr"></div>
+      </div>
+      <div class="card rules">
+        <h2>How to play</h2>
+        <p id="rulesText"></p>
+        <ul>
+          <li><b>Alone</b> at a cove? Take its gold and keep your oars.</li>
+          <li><b>Most oars</b> where captains meet takes the gold, and hands those oars to the captains it beat.</li>
+          <li><b>Outrowed?</b> You collect their oars for a bigger fight later.</li>
+          <li>Ties go to the captain with less gold. Round 8 pays double; oars are worth nothing after it.</li>
+        </ul>
+        <p class="small muted" style="margin-top:10px">Keys: 1-5 pick a cove, arrows set your oars, Enter sends.<br>Agents play over a JSON API: <a href="/api">/api</a> &middot; <a href="/api/openapi.json">OpenAPI</a></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOBBY -->
+  <section id="vLobby" class="hidden">
+    <div class="card">
+      <h2>Table ready</h2>
+      <p class="muted small" style="margin:0">Share this code or link. Empty seats become bots when you start.</p>
+      <div class="bigcode" id="lobbyCode"></div>
+      <div class="row"><button class="btn grow" id="copyBtn">Copy invite link</button></div>
+      <p class="small muted" id="lobbyLink" style="word-break:break-all"></p>
+      <ul class="seats" id="seatList"></ul>
+      <button class="btn primary block" id="startBtn">Start now</button>
+      <div id="lobbyJoin" class="hidden">
+        <label class="small muted" for="nameIn2">Your captain name</label>
+        <input id="nameIn2" type="text" maxlength="16" placeholder="Captain">
+        <div style="height:10px"></div>
+        <button class="btn primary block" id="takeSeatBtn">Take a seat</button>
+      </div>
+      <p class="small muted">Agents: <code id="agentHint"></code></p>
+      <div class="err" id="lobbyErr"></div>
+    </div>
+  </section>
+
+  <!-- GAME -->
+  <section id="vGame" class="hidden">
+    <div class="roundbar">
+      <span class="rn" id="roundLbl"></span>
+      <span id="dblBadge" class="badge hidden">Pays x2</span>
+      <div class="timer" id="timer"><i id="timerFill"></i></div>
+      <span class="secs" id="secs"></span>
+    </div>
+    <div class="captains" id="caps"></div>
+    <p class="prompt" id="prompt"></p>
+    <div class="coves" id="coves"></div>
+    <div class="dock" id="dock">
+      <div class="bidrow">
+        <button class="step" id="minus" aria-label="Lower bid">&minus;</button>
+        <div class="bidval" id="bidVal">0</div>
+        <button class="step" id="plus" aria-label="Raise bid">+</button>
+        <input type="range" id="bidRange" min="0" max="4" value="0" aria-label="Bid">
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="hint" id="hint"></div>
+      <button class="btn primary block" id="sendBtn" disabled>Pick a cove</button>
+    </div>
+    <div class="card results" id="lastCard"></div>
+    <div class="row"><button class="btn ghost small" id="logBtn">Match log</button></div>
+  </section>
+
+  <!-- END -->
+  <section id="vEnd" class="hidden">
+    <div class="card">
+      <div class="winner"><div class="muted small">Match over</div><h2 id="winTitle"></h2><div class="muted" id="winSub"></div></div>
+      <div id="standings"></div>
+      <div style="height:12px"></div>
+      <div class="row"><button class="btn primary grow" id="againBtn">Play again</button><button class="btn grow" id="replayBtn">Watch replay</button></div>
+    </div>
+    <div class="card results" id="endLast"></div>
+    <div class="card"><h2>Gold by round</h2><svg class="chart" id="chart" viewBox="0 0 320 170" role="img" aria-label="Gold per captain by round"></svg><div class="row small" id="legend"></div></div>
+  </section>
+
+  <!-- REPLAY -->
+  <section id="vReplay" class="hidden">
+    <div class="card">
+      <div class="replay-nav"><button class="step" id="rPrev" aria-label="Previous round">&lsaquo;</button><span class="rn" id="rLbl"></span><button class="step" id="rNext" aria-label="Next round">&rsaquo;</button></div>
+      <p class="small muted" id="rCapsLbl" style="margin:0 0 8px"></p>
+      <div class="captains" id="rCaps"></div>
+      <div class="coves" id="rCoves"></div>
+      <div class="results" id="rRes"></div>
+    </div>
+    <div class="row"><button class="btn" id="rBack">Back</button><a class="btn ghost small" id="rJson" href="#" target="_blank" rel="noopener">Raw log (JSON)</a></div>
+  </section>
+
+  <div class="foot">Driftgold &middot; turn-based, 2-4 captains, about 5 minutes &middot; <a href="/api">agent API</a></div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/app.js"></script>
+</body>
+</html>

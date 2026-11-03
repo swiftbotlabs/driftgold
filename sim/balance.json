@@ -1,0 +1,132 @@
+{
+ "generated": "2026-11-03T22:01Z",
+ "rulesVersion": 4,
+ "vsHouse": {
+  "matchesPerCell": 500,
+  "note": "win share of the plan; fair share is 0.25 at 4 seats, 0.50 at 2",
+  "rows": {
+   "bully": {
+    "vs3house": 0.195,
+    "vs1house": 0.162
+   },
+   "dodger": {
+    "vs3house": 0.036,
+    "vs1house": 0.022
+   },
+   "shark": {
+    "vs3house": 0.018,
+    "vs1house": 0.024
+   },
+   "fair": {
+    "vs3house": 0.09,
+    "vs1house": 0.117
+   },
+   "steady": {
+    "vs3house": 0.038,
+    "vs1house": 0.31
+   },
+   "topper": {
+    "vs3house": 0.096,
+    "vs1house": 0.392
+   },
+   "raider": {
+    "vs3house": 0.159,
+    "vs1house": 0.213
+   },
+   "allin": {
+    "vs3house": 0.057,
+    "vs1house": 0.018
+   },
+   "patient": {
+    "vs3house": 0.112,
+    "vs1house": 0.325
+   },
+   "banker": {
+    "vs3house": 0.03,
+    "vs1house": 0.02
+   },
+   "random": {
+    "vs3house": 0.078,
+    "vs1house": 0.012
+   }
+  }
+ },
+ "fourPlayer": {
+  "matches": 2010,
+  "tables": 15,
+  "winShare": {
+   "bully": 0.391,
+   "fair": 0.232,
+   "steady": 0.106,
+   "topper": 0.299,
+   "patient": 0.318,
+   "raider": 0.154
+  }
+ },
+ "twoPlayer": {
+  "matches": 2001,
+  "tables": 3,
+  "winShare": {
+   "steady": 0.556,
+   "topper": 0.353,
+   "patient": 0.591
+  },
+  "headToHead": {
+   "steady v topper": 0.486,
+   "steady v patient": 0.627,
+   "topper v patient": 0.192
+  }
+ },
+ "allPlans4p": {
+  "matches": 2310,
+  "winShare": {
+   "bully": 0.319,
+   "dodger": 0.076,
+   "shark": 0.038,
+   "fair": 0.254,
+   "steady": 0.423,
+   "topper": 0.512,
+   "raider": 0.451,
+   "allin": 0.143,
+   "patient": 0.393,
+   "banker": 0.046,
+   "random": 0.094
+  }
+ },
+ "allPlans2p": {
+  "matches": 2035,
+  "winShare": {
+   "bully": 0.462,
+   "dodger": 0.191,
+   "shark": 0.349,
+   "fair": 0.451,
+   "steady": 0.854,
+   "topper": 0.811,
+   "raider": 0.673,
+   "allin": 0.454,
+   "patient": 0.874,
+   "banker": 0.295,
+   "random": 0.086
+  }
+ },
+ "houseSelfPlay": {
+  "4p": {
+   "matches": 500,
+   "seatWinShare": [
+    0.228,
+    0.239,
+    0.316,
+    0.217
+   ],
+   "avgWinningMargin": 4.3
+  },
+  "2p": {
+   "matches": 500,
+   "seatWinShare": [
+    0.535,
+    0.465
+   ],
+   "avgWinningMargin": 6.1
+  }
+ }
+}
