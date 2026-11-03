@@ -45,6 +45,7 @@ def call(base, method, path, body=None, token=None):
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(base + path, data=data, method=method)
     req.add_header("content-type", "application/json")
+    req.add_header("user-agent", "driftgold-sample-bot/1.0 (python)")  # Cloudflare refuses the default Python-urllib agent with a 403
     if token:
         req.add_header("authorization", "Bearer " + token)
     try:
