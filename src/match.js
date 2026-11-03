@@ -105,13 +105,15 @@ export class Match {
   }
 
   async join({ name, kind }) {
+    // hash first: nothing below may await before the seat is claimed, or two joins could take one seat
+    const token = newToken();
+    const tokenHash = await sha256(token);
     const m = this.m;
     if (m.phase !== "lobby") return err(409, "not_joinable", `match is ${m.phase === "play" ? "already running" : m.phase}`);
     const seat = m.seats.findIndex((s) => s === null);
     if (seat < 0) return err(409, "full", "all seats are taken");
-    const token = newToken();
     const k = kind === "agent" ? "agent" : "human";
-    m.seats[seat] = { name: cleanName(name, `Captain ${seat + 1}`), kind: k, tokenHash: await sha256(token), joinedAt: Date.now() };
+    m.seats[seat] = { name: cleanName(name, `Captain ${seat + 1}`), kind: k, tokenHash, joinedAt: Date.now() };
     if (m.seats.every((s) => s !== null)) this.begin();
     await this.save();
     if (m.phase === "play") await this.ctx.storage.setAlarm(m.roundEndsAt);
@@ -151,7 +153,8 @@ export class Match {
   botMove(seat) {
     const g = this.m.game;
     const r = rng((this.m.seed ^ Math.imul(g.round, 7919) ^ Math.imul(seat + 1, 104729)) >>> 0);
-    return houseBot(g, seat, r);
+    const botSeats = this.m.seats.map((x, i) => (x && x.kind === "bot" ? i : -1)).filter((i) => i >= 0);
+    return houseBot(g, seat, r, { botSeats });
   }
 
   async move(seat, input) {
@@ -235,7 +238,9 @@ export class Match {
     }
     await this.tick();
     if (m.phase === "play") await this.ctx.storage.setAlarm(m.roundEndsAt);
+    else if (m.phase === "over") await this.ctx.storage.setAlarm(m.finishedAt + KEEP_FINISHED_MS + 1000);
     else if (m.phase === "expired") await this.ctx.storage.setAlarm(m.createdAt + KEEP_FINISHED_MS + 1000);
+    else if (m.phase === "lobby") await this.ctx.storage.setAlarm(m.createdAt + LOBBY_TTL_MS + 1000);
   }
 }
 

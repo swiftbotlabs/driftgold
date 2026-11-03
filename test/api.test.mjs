@@ -149,6 +149,8 @@ test("bad input gets clear errors", async () => {
     [await call("GET", "/api/match/../../etc"), 404, null],
     [await call("GET", "/api/match/abc"), 404, "no_match"],
     [await call("GET", "/api/nope"), 404, "not_found"],
+    [await call("GET", `/api/match/${code}/constructor`), 404, "not_found"],
+    [await call("POST", `/api/match/${code}/init`, { code, players: 2 }), 404, "not_found"],
     [await call("GET", `/api/match/${code}/move`), 405, "method"],
     [await call("POST", `/api/match/${code}/move`, { cove: 0, oars: 1 }, "wrongtoken123"), 403, "bad_token"],
     [await call("POST", `/api/match/${code}/move`, { cove: 0, oars: 1 }), 403, "bad_token"],

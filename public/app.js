@@ -102,6 +102,7 @@
     $("codePill").classList.add("hidden");
     show("vHome");
     $("rulesText").textContent = RULES;
+    $("rulesText2").textContent = RULES;
     const nm = store.get("dg:name");
     if (nm && !$("nameIn").value) $("nameIn").value = nm;
     $("homeErr").textContent = msg || "";
@@ -201,26 +202,30 @@
   };
 
   // ---------- game ----------
-  function renderCaps(el, caps, gold, st, oars) {
+  function renderCaps(el, caps, gold, st, oars, prev, pulse) {
     clear(el);
     const max = Math.max(1, ...gold);
     const lead = Math.max(...gold);
     const soleLead = gold.filter((x) => x === lead).length === 1;
     caps.forEach((c, i) => {
       const status = st ? (c.moved ? "ready" : "choosing") : c.kind;
-      el.append(h("div", { class: "cap" + (i === S.seat ? " you" : "") },
+      const dG = prev ? prev.goldAfter[i] - prev.goldBefore[i] : 0;
+      const dO = prev ? prev.oarsAfter[i] - prev.oarsBefore[i] : 0;
+      const oarTxt = `${oars[i]} oar${oars[i] === 1 ? "" : "s"}${dO ? ` (${dO > 0 ? "+" : ""}${dO})` : ""}`;
+      el.append(h("div", { class: "cap" + (i === S.seat ? " you" : "") + (pulse && (dG || dO) ? " pulse" : "") },
         h("span", { class: "dot", style: `background:${COLORS[i]}` }),
         h("div", { class: "info grow" },
           h("span", { class: "nm" }, (i === S.seat ? "You" : (c.name || "").replace(/ \(bot\)$/, "")) + (soleLead && gold[i] === lead ? " ★" : "")),
-          h("span", { class: "st" }, `${oars[i]} oar${oars[i] === 1 ? "" : "s"} · ${c.kind === "bot" ? "bot" : ""}${c.kind === "bot" && st ? ", " : ""}${c.kind === "bot" && !st ? "" : status}`),
+          h("span", { class: "st" }, `${oarTxt} · ${c.kind === "bot" ? "bot" : status}`),
           h("div", { class: "bar" }, h("i", { style: `width:${Math.round((100 * gold[i]) / max)}%;background:${COLORS[i]}` }))),
-        h("span", { class: "gd" }, h("span", { class: "coin sm" }), gold[i])));
+        h("span", { class: "gd" }, h("span", { class: "coin sm" }), gold[i], dG ? h("sup", { class: "delta" }, `+${dG}`) : null)));
     });
   }
 
   function renderGame(st) {
     show("vGame");
     const prev = st.previous;
+    const fresh = st.round !== S.seenRound;
     if (st.round !== S.seenRound) {
       if (S.seenRound !== -1 && prev) announce(prev, st);
       S.seenRound = st.round;
@@ -229,7 +234,7 @@
     }
     $("roundLbl").textContent = `Round ${st.round}/${st.rounds}`;
     $("dblBadge").classList.toggle("hidden", !st.finalRound);
-    renderCaps($("caps"), st.captains, st.captains.map((c) => c.gold), st, st.captains.map((c) => c.oars));
+    renderCaps($("caps"), st.captains, st.captains.map((c) => c.gold), st, st.captains.map((c) => c.oars), prev, fresh && S.seenRound !== 1);
     const player = !!st.you;
     const waiting = st.captains.filter((c) => !c.moved).length;
     const p = clear($("prompt"));
@@ -246,7 +251,8 @@
       if (pr) note = pr.winner === null ? `${pr.captains.length ? "tied, " : ""}tide +${tide === null ? "?" : tide}` : "taken, restarted";
       const visitors = pr ? pr.captains : [];
       const sel = S.sel === c.cove;
-      cv.append(h("button", { class: "cove" + (sel ? " sel" : "") + (player ? "" : " disabled"), "aria-pressed": sel ? "true" : "false", onclick: () => pickCove(c.cove) },
+      const won = pr && pr.winner !== null && fresh && S.seenRound !== 1;
+      cv.append(h("button", { class: "cove" + (sel ? " sel" : "") + (player ? "" : " disabled") + (won ? " flash" : ""), style: won ? `--wc:${COLORS[pr.winner]}` : null, "aria-pressed": sel ? "true" : "false", onclick: () => pickCove(c.cove) },
         h("div", { class: "lbl" }, coveName(c.cove)),
         h("div", { class: "amt" }, h("span", { class: "coin" }), c.payout, c.payout !== c.gold ? h("span", { class: "x2" }, `(${c.gold} x2)`) : null),
         h("div", { class: "visitors", title: "came here last round" }, visitors.map((s) => h("span", { class: "dot", style: `background:${COLORS[s]}` }))),
@@ -432,7 +438,7 @@
     $("rLbl").textContent = `Round ${r.round} of ${log.rounds.length}${r.double ? " (x2)" : ""}`;
     $("rPrev").disabled = S.rIdx === 0;
     $("rNext").disabled = S.rIdx === log.rounds.length - 1;
-    renderCaps($("rCaps"), caps, r.goldAfter, null, r.oarsAfter);
+    renderCaps($("rCaps"), caps, r.goldAfter, null, r.oarsAfter, r, false);
     $("rCapsLbl").textContent = `Gold and oars after round ${r.round}. Coves show what they paid; under each: who came and how many oars they rowed.`;
     const cv = clear($("rCoves"));
     cv.className = `coves n${r.coves.length}`;
@@ -451,9 +457,17 @@
       box.append(h("p", null, h("b", null, w.length > 1 ? "Shared win: " : "Winner: "), ...joinNames(w, (s) => capName(caps, s)), ` with ${log.final.gold[w[0]]} gold.`));
     }
   }
-  $("rPrev").onclick = () => { if (S.rIdx > 0) { S.rIdx--; renderReplay(); } };
-  $("rNext").onclick = () => { if (S.rIdx < S.log.rounds.length - 1) { S.rIdx++; renderReplay(); } };
-  $("rBack").onclick = () => { history.pushState(null, "", `/?m=${S.code}`); openMatch(S.code); };
+  let autoT = null;
+  function stopAuto() { clearInterval(autoT); autoT = null; $("rPlay").textContent = "Play"; }
+  $("rPlay").onclick = () => {
+    if (autoT) return stopAuto();
+    if (S.rIdx >= S.log.rounds.length - 1) { S.rIdx = 0; renderReplay(); }
+    $("rPlay").textContent = "Pause";
+    autoT = setInterval(() => { if (S.rIdx < S.log.rounds.length - 1) { S.rIdx++; renderReplay(); } else stopAuto(); }, 1800);
+  };
+  $("rPrev").onclick = () => { stopAuto(); if (S.rIdx > 0) { S.rIdx--; renderReplay(); } };
+  $("rNext").onclick = () => { stopAuto(); if (S.rIdx < S.log.rounds.length - 1) { S.rIdx++; renderReplay(); } };
+  $("rBack").onclick = () => { stopAuto(); history.pushState(null, "", `/?m=${S.code}`); openMatch(S.code); };
   $("logBtn").onclick = () => {
     if (!S.st || !S.st.previous) { toast("The log fills in after round 1.", 2000); return; }
     history.pushState(null, "", `/?replay=${S.code}`);

@@ -152,7 +152,7 @@ async function api(request, env, url) {
   const op = parts[3] || "state";
   if (parts.length > 4) return fail(404, "not_found", "unknown endpoint");
   const routes = { state: "GET", log: "GET", join: "POST", start: "POST", move: "POST" };
-  if (!routes[op]) return fail(404, "not_found", "unknown endpoint");
+  if (!Object.hasOwn(routes, op)) return fail(404, "not_found", "unknown endpoint");
   if (routes[op] !== method) return fail(405, "method", `use ${routes[op]} for ${op}`);
   if (method === "GET") {
     const token = bearer(request) || url.searchParams.get("token");

@@ -9,6 +9,9 @@ const richest = (g) => { const x = v(g); return x.indexOf(Math.max(...x)); };
 const extra = {
   topper2: (g, s) => { const i = richest(g); return { site: i, bid: Math.min(g.oars[s], Math.floor(v(g)[i] / 2) + 2) }; },
   allin: (g, s) => ({ site: richest(g), bid: g.oars[s] }),
+  second: (g, s) => { const x = v(g), o = x.map((_, i) => i).sort((a, b) => x[b] - x[a]); return { site: o[1], bid: Math.min(g.oars[s], 1) }; },
+  secondHalf: (g, s) => { const x = v(g), o = x.map((_, i) => i).sort((a, b) => x[b] - x[a]); return { site: o[1], bid: Math.min(g.oars[s], Math.floor(x[o[1]] / 2) + 1) }; },
+  third: (g, s) => { const x = v(g), o = x.map((_, i) => i).sort((a, b) => x[b] - x[a]); return { site: o[2], bid: 0 }; },
   // the rule in bot/sample_bot.py
   sample: (g, s) => {
     const x = v(g), i = x.indexOf(Math.max(...x));
@@ -26,7 +29,8 @@ function run(p, n) {
     const k = m % n;
     const seats = Array(n).fill("house"); seats[k] = p;
     let g = newGame(n, m * 977 + 3 + n, over);
-    while (!g.over) g = resolveRound(g, seats.map((q, s) => (q === "house" ? houseBot : pol[q])(g, s, r)));
+    const bs = seats.map((q, i) => (q === "house" ? i : -1)).filter((i) => i >= 0);
+    while (!g.over) g = resolveRound(g, seats.map((q, s) => (q === "house" ? houseBot(g, s, r, { botSeats: bs }) : pol[q](g, s, r))));
     const { winners } = standings(g);
     if (winners.includes(k)) wins += 1 / winners.length;
   }

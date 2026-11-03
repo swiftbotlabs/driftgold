@@ -31,8 +31,8 @@ by the match seed, so a match replays exactly from its log.
 - Every lost fight pays you oars, so the trailing captain ends up with the most power.
 - Ties go to the captain with less gold, so the trailing captain wins every even fight.
 - Neglected coves keep growing with the tide, so a crowd on one cove leaves gold elsewhere.
-- In simulation the average winning margin between two house bots is 4-6 gold, with a double-pay last
-  round worth 2-16 gold, so the last round regularly decides the match.
+- In simulation the average winning margin between house bots is 3.4-3.7 gold, while the double-pay last
+  round is worth 2-16 gold, so the last round regularly decides the match.
 
 ## Balance evidence (sim/balance.mjs, fixed seeds; raw numbers in sim/balance.json)
 Simple fixed plans, each a few lines in `src/bots.js`:
@@ -68,21 +68,23 @@ Topper split 49/51. Every simple plan has a simple counter.
 
 | Plan | vs 3 house bots (fair share 25%) | vs 1 house bot (fair share 50%) |
 |---|---|---|
-| Bully | 19.5% | 16.2% |
-| Fair | 9.0% | 11.7% |
-| Steady | 3.8% | 31.0% |
-| Topper | 9.6% | 39.2% |
-| Raider | 15.9% | 21.3% |
-| Patient | 11.2% | 32.5% |
-| Dodger | 3.6% | 2.2% |
-| Shark | 1.8% | 2.4% |
-| Banker | 3.0% | 2.0% |
-| All-in | 5.7% | 1.8% |
-| Random | 7.8% | 1.2% |
+| Bully | 13.4% | 8.4% |
+| Fair | 3.6% | 11.5% |
+| Steady | 7.4% | 28.0% |
+| Topper | 16.4% | 39.2% |
+| Raider | 24.6% | 18.5% |
+| Patient | 10.2% | 27.2% |
+| Second (always the second-richest cove, half its gold plus one) | 21.1% | 0.0% |
+| Sample bot's rule (`bot/sample_bot.py`) | 9.2% | 33.1% |
+| Dodger | 0.2% | 2.4% |
+| Shark | 0.8% | 3.4% |
+| Banker | 4.5% | 1.0% |
+| All-in | 4.3% | 0.2% |
+| Random | 2.8% | 1.0% |
 
 No fixed plan reaches its fair share against the house bot, at either table size: a habit gets read and
-punished. House bot self-play: 4 seats 22.8 / 23.9 / 31.6 / 21.7% (the seats have different
-temperaments), 2 seats 53.5 / 46.5%.
+punished. House bot self-play: 4 seats 26.4 / 27.5 / 24.2 / 22.0% (the seats have different
+temperaments), 2 seats 53.4 / 46.6%, average winning margin 3.4-3.7 gold.
 
 For completeness, every plan against every other plan, weak ones included (`allPlans4p`,
 `allPlans2p` in the JSON): the strongest plans reach 51% (4p) and 87% (2p) because they feed on
@@ -90,11 +92,19 @@ Random, Shark, Dodger and Banker; among the competitive plans the circle above h
 
 ## The house bot ("Reader")
 For every rival it keeps counts of which value rank of cove they pick and how many oars they row relative
-to the cove's gold. Each turn it samples 40 likely rounds from those models, scores every (cove, oars)
-option by gold gained plus oars gained (an oar is worth `rounds left / rounds` gold) relative to the
-table, and picks with a softmax so it is not predictable. Each house seat has a temperament (more or
-less noise, and one simple style mixed in 10% of the time) so a table of bots does not play as one.
-It sees only public information: what every player sees.
+to the cove's gold. Each turn it samples 24 likely rounds from those models and scores each option by gold
+gained plus oars gained (an oar is worth `rounds left / rounds` gold), relative to the rest of the table.
+It only scores 0, all-in, and the bids that tie or just beat a sampled rival bid: between those points a
+bigger bid changes nothing but hands over more oars. It picks with a softmax so it is not predictable.
+
+Other house bots at the table are not extrapolated from history: seat kinds are public and the code is
+open, so the Reader predicts them by running their decision one level down (70% of samples; the rest
+from history). Without this, house bots piled onto the richest cove together and a plan that always
+took the second-richest cove won 48% against three of them; with it, 21%. Each house seat also has a
+temperament (more or less noise, one simple style mixed in 10% of the time). Round 1 uses a light search
+since there is no history yet; in round 8 it picks a cove the same way and rows every oar, because oars
+are worth nothing after the last round. Cost: about 0.4 ms per decision warm, under 8 ms for a whole round of
+four bots from a cold start (measured in Node). It sees only public information: what every player sees.
 
 ## How the rules got here (what failed, measured with the same simulator)
 1. Bids from a separate energy pool that refills, winner pays the bank: "richest cove, bid its value"

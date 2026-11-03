@@ -10,6 +10,10 @@ you play during the match.
   <img src="docs/play-mobile.png" alt="Round 1 on a phone: five coves, a chosen cove and the oar picker" width="260">
   <img src="docs/play-desktop.png" alt="Mid-game on desktop: captains, coves with tide, last round results" width="540">
 </p>
+<p>
+  <img src="docs/end-desktop.png" alt="End of a match: standings, final round results and gold by round" width="400">
+  <img src="docs/replay-desktop.png" alt="Replay viewer: every round with each captain's cove and oars" width="400">
+</p>
 
 ## Rules
 
@@ -160,8 +164,8 @@ python3 bot/sample_bot.py --code U2C6M --base <PLAY_URL>    # join a table someo
 ```
 
 It goes to the richest cove, rows just over half its gold when it has more oars than any rival (nothing
-otherwise), and rows everything in the final round. It loses to the house bot most of the time; that is
-the point of a starting template.
+otherwise), and rows everything in the final round. In simulation it wins about 1 match in 3 against one
+house bot and 1 in 10 against three: a starting point, not a solution.
 
 ## Run it yourself
 

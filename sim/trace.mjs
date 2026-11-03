@@ -4,7 +4,11 @@ import { POLICIES, reader } from "../src/bots.js";
 const names = (process.argv[2] || "topper,reader").split(",");
 const seed = parseInt(process.argv[3] || "7", 10);
 const over = process.argv[4] ? JSON.parse(process.argv[4]) : {};
-const pol = { ...POLICIES, strong: (g, s, r) => reader(g, s, r, { oarWorth: 1, temp: 0.3 }) };
+import { houseBot } from "../src/bots.js";
+import { payout } from "../src/engine.js";
+const vv = (g) => g.pots.map((_, i) => payout(g, i));
+const pol = { ...POLICIES, house: houseBot, strong: (g, s, r) => reader(g, s, r, { oarWorth: 1, temp: 0.3 }),
+  secondHalf: (g, s) => { const x = vv(g), o = x.map((_, i) => i).sort((a, b) => x[b] - x[a]); return { site: o[1], bid: Math.min(g.oars[s], Math.floor(x[o[1]] / 2) + 1) }; } };
 const r = rng(seed ^ 0x9e3779b9);
 let g = newGame(names.length, seed, over);
 while (!g.over) {

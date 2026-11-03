@@ -128,25 +128,17 @@ function rivalModel(g, o) {
   return { rank, ratio };
 }
 
-export function reader(g, seat, r, opts = {}) {
-  const temp = opts.temp ?? 0.35;
-  const samples = opts.samples ?? 48;
+// Score every sensible (cove, oars) option for `seat`. sampleRival(o) draws one likely move for rival o.
+function scoreOptions(g, seat, r, opts, sampleRival) {
+  const samples = opts.samples ?? 32;
   const n = g.cfg.players;
   const v = values(g);
   const left = (g.cfg.rounds - g.round) / g.cfg.rounds; // share of the match still to play after this round
   const oarWorth = (opts.oarWorth ?? 1) * left;
-  const order = v.map((_, i) => i).sort((a, b) => v[b] - v[a] || (r() < 0.5 ? -1 : 1));
-  const models = [];
-  for (let o = 0; o < n; o++) models.push(o === seat ? null : rivalModel(g, o));
   const scen = [];
   for (let k = 0; k < samples; k++) {
     const sc = [];
-    for (let o = 0; o < n; o++) {
-      if (o === seat) continue;
-      const site = order[weightedPick(models[o].rank, r)];
-      const bid = clampBid(g, o, RATIOS[weightedPick(models[o].ratio, r)] * v[site]);
-      sc.push({ seat: o, site, bid, gold: g.gold[o] });
-    }
+    for (let o = 0; o < n; o++) if (o !== seat) { const m = sampleRival(o); sc.push({ seat: o, site: m.site, bid: m.bid, gold: g.gold[o] }); }
     scen.push(sc);
   }
   const worth = (out, s) => out.gold.get(s) + oarWorth * out.oars.get(s);
@@ -159,10 +151,14 @@ export function reader(g, seat, r, opts = {}) {
     }
     return { bySite, total: bySite.reduce((a, b) => a + b, 0) };
   });
-  const maxBid = Math.min(g.oars[seat], Math.max(...v) * 2 + 2);
+  // Only 0 and the bids that tie or just beat a sampled rival bid can be best: between those points a
+  // bigger bid changes no outcome and only hands over more oars. (Plus all-in, which matters last round.)
   const cands = [];
   for (let site = 0; site < v.length; site++) {
-    for (let bid = 0; bid <= maxBid; bid++) {
+    const pts = new Set([0, g.oars[seat]]);
+    for (const sc of scen) for (const x of sc) if (x.site === site) { pts.add(x.bid); pts.add(x.bid + 1); }
+    for (const bid of pts) {
+      if (bid > g.oars[seat]) continue;
       let total = 0;
       scen.forEach((sc, k) => {
         const ent = sc.filter((x) => x.site === site);
@@ -170,13 +166,52 @@ export function reader(g, seat, r, opts = {}) {
         let rivalsHere = 0;
         for (const x of ent) rivalsHere += worth(o, x.seat);
         const rivalsAll = base[k].total - base[k].bySite[site] + rivalsHere;
+        // judged relative to the table: my gain minus the average rival gain this round
         total += worth(o, seat) - rivalsAll / (n - 1);
       });
-      cands.push({ site, bid, u: total / samples });
+      // in the last round oars are worth nothing afterwards: among equal options, row more
+      cands.push({ site, bid, u: total / samples + (left === 0 ? 1e-3 * bid : 0) });
     }
   }
+  return cands;
+}
+
+function softPick(cands, temp, r) {
   const maxU = Math.max(...cands.map((c) => c.u));
-  const pick = cands[weightedPick(cands.map((c) => Math.exp((c.u - maxU) / temp)), r)];
+  return cands[weightedPick(cands.map((c) => Math.exp((c.u - maxU) / temp)), r)];
+}
+
+// opts: temp, samples, oarWorth, botSeats (seats known to run this same algorithm: public, since seat
+// kinds are public and the code is open). For those rivals the Reader predicts their move by running
+// their decision one level down instead of extrapolating their history, so bots do not all pile onto
+// the same cove.
+export function reader(g, seat, r, opts = {}) {
+  const temp = opts.temp ?? 0.35;
+  const n = g.cfg.players;
+  const v = values(g);
+  const order = v.map((_, i) => i).sort((a, b) => v[b] - v[a] || (r() < 0.5 ? -1 : 1));
+  const models = [];
+  for (let o = 0; o < n; o++) models.push(rivalModel(g, o));
+  const last = g.round === g.cfg.rounds;
+  const fromHistory = (o) => {
+    const site = order[weightedPick(models[o].rank, r)];
+    // in the last round, expect half of rivals to throw in every oar they have
+    if (last && r() < 0.5) return { site, bid: g.oars[o] };
+    return { site, bid: clampBid(g, o, RATIOS[weightedPick(models[o].ratio, r)] * v[site]) };
+  };
+  let sampleRival = fromHistory;
+  const bots = (opts.botSeats || []).filter((o) => o !== seat);
+  if (bots.length && opts.level2 !== false) {
+    const predicted = {};
+    for (const o of bots) {
+      const c = scoreOptions(g, o, r, { ...opts, samples: opts.level2Samples ?? 16 }, fromHistory);
+      const maxU = Math.max(...c.map((x) => x.u));
+      predicted[o] = { c, w: c.map((x) => Math.exp((x.u - maxU) / temp)) };
+    }
+    const mix = opts.level2Mix ?? 0.7; // share of samples that use the one-level-down prediction
+    sampleRival = (o) => (predicted[o] && r() < mix ? predicted[o].c[weightedPick(predicted[o].w, r)] : fromHistory(o));
+  }
+  const pick = softPick(scoreOptions(g, seat, r, opts, sampleRival), temp, r);
   return { site: pick.site, bid: pick.bid };
 }
 
@@ -198,9 +233,16 @@ export const POLICIES = { bully, dodger, shark, fair, steady, topper, raider, al
 // House bot for empty seats: the Reader, with a per-seat temperament so a table of bots is not three
 // copies of one player. Each temperament mixes in one simple style some of the time.
 const TEMPERAMENTS = [fair, shark, bully, dodger];
-export function houseBot(g, seat, r) {
+export function houseBot(g, seat, r, ctx = {}) {
   const style = TEMPERAMENTS[seat % TEMPERAMENTS.length];
-  if (g.round > 1 && r() < 0.1) return style(g, seat, r);
-  return reader(g, seat, r, { temp: 0.35 + 0.1 * (seat % 3), oarWorth: 1, samples: 40 });
+  if (g.round === g.cfg.rounds) {
+    // last round: oars are worth nothing afterwards, so choose the cove and row everything
+    const m = reader(g, seat, r, { temp: 0.35, samples: ctx.samples ?? 24, level2Samples: ctx.level2Samples ?? 10, botSeats: ctx.botSeats, level2Mix: ctx.level2Mix ?? 0.7 });
+    return { site: m.site, bid: g.oars[seat] };
+  }
+  if (g.round > 1 && r() < (ctx.mix ?? 0.1)) return style(g, seat, r);
+  // round 1 has no history to read, so a light search is as good and keeps a cold start cheap
+  if (g.round === 1) return reader(g, seat, r, { temp: 0.6, samples: 12, level2: false });
+  return reader(g, seat, r, { temp: (ctx.temp ?? 0.35) + 0.1 * (seat % 3), oarWorth: ctx.oarWorth ?? 1, samples: ctx.samples ?? 24, level2Samples: ctx.level2Samples ?? 10, botSeats: ctx.botSeats, level2: ctx.level2, level2Mix: ctx.level2Mix ?? 0.7 });
 }
 POLICIES.house = houseBot;

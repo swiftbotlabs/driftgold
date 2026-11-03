@@ -1,53 +1,61 @@
 {
- "generated": "2026-11-03T22:01Z",
+ "generated": "2026-11-03T22:23Z",
  "rulesVersion": 4,
  "vsHouse": {
   "matchesPerCell": 500,
   "note": "win share of the plan; fair share is 0.25 at 4 seats, 0.50 at 2",
   "rows": {
    "bully": {
-    "vs3house": 0.195,
-    "vs1house": 0.162
+    "vs3house": 0.134,
+    "vs1house": 0.084
    },
    "dodger": {
-    "vs3house": 0.036,
-    "vs1house": 0.022
-   },
-   "shark": {
-    "vs3house": 0.018,
+    "vs3house": 0.002,
     "vs1house": 0.024
    },
+   "shark": {
+    "vs3house": 0.008,
+    "vs1house": 0.034
+   },
    "fair": {
-    "vs3house": 0.09,
-    "vs1house": 0.117
+    "vs3house": 0.036,
+    "vs1house": 0.115
    },
    "steady": {
-    "vs3house": 0.038,
-    "vs1house": 0.31
+    "vs3house": 0.074,
+    "vs1house": 0.28
    },
    "topper": {
-    "vs3house": 0.096,
+    "vs3house": 0.164,
     "vs1house": 0.392
    },
    "raider": {
-    "vs3house": 0.159,
-    "vs1house": 0.213
+    "vs3house": 0.246,
+    "vs1house": 0.185
    },
    "allin": {
-    "vs3house": 0.057,
-    "vs1house": 0.018
+    "vs3house": 0.043,
+    "vs1house": 0.002
    },
    "patient": {
-    "vs3house": 0.112,
-    "vs1house": 0.325
+    "vs3house": 0.102,
+    "vs1house": 0.272
    },
    "banker": {
-    "vs3house": 0.03,
-    "vs1house": 0.02
+    "vs3house": 0.045,
+    "vs1house": 0.01
    },
    "random": {
-    "vs3house": 0.078,
-    "vs1house": 0.012
+    "vs3house": 0.028,
+    "vs1house": 0.01
+   },
+   "second": {
+    "vs3house": 0.211,
+    "vs1house": 0
+   },
+   "sample": {
+    "vs3house": 0.092,
+    "vs1house": 0.331
    }
   }
  },
@@ -113,20 +121,20 @@
   "4p": {
    "matches": 500,
    "seatWinShare": [
-    0.228,
-    0.239,
-    0.316,
-    0.217
+    0.264,
+    0.275,
+    0.242,
+    0.22
    ],
-   "avgWinningMargin": 4.3
+   "avgWinningMargin": 3.4
   },
   "2p": {
    "matches": 500,
    "seatWinShare": [
-    0.535,
-    0.465
+    0.534,
+    0.466
    ],
-   "avgWinningMargin": 6.1
+   "avgWinningMargin": 3.7
   }
  }
 }
