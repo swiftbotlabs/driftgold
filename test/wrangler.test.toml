@@ -1,0 +1,22 @@
+# Local test server only (test/run_api.sh): same Worker without the per-network rate-limit bindings,
+# and high fallback limits, because the test suite makes many calls from one address.
+name = "driftgold-test"
+main = "../src/worker.js"
+compatibility_date = "2026-10-01"
+
+[assets]
+directory = "../public"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+
+[[durable_objects.bindings]]
+name = "MATCH"
+class_name = "Match"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Match"]
+
+[vars]
+API_PER_MIN = "100000"
+CREATE_PER_MIN = "100000"

@@ -146,19 +146,46 @@
     try { await refresh(true); } catch (e) { home(e.status === 404 ? `No match with code ${code}.` : e.message); return; }
     startPoll();
   }
+  // One request at a time; a 404 mid-match means it was deleted (abandoned or expired).
+  let inFlight = false;
   async function refresh(force) {
-    const st = await api(`/api/match/${S.code}`, undefined, S.token);
+    if (inFlight) return;
+    inFlight = true;
+    let st;
+    try {
+      st = await api(`/api/match/${S.code}`, undefined, S.token);
+    } catch (e) {
+      if (e.status === 404 && S.code) { stopPoll(); home("That match has ended: it expired, or nobody played for two rounds."); }
+      throw e;
+    } finally {
+      inFlight = false;
+    }
     S.skew = st.serverTime - Date.now();
     if (st.you) S.seat = st.you.seat; else if (S.token) { S.token = null; S.seat = -1; }
     if (force || st.version !== S.ver || st.phase !== (S.st && S.st.phase)) { S.ver = st.version; S.st = st; render(); }
   }
+  // Adaptive polling, to keep request counts low: nothing can change much while you are still choosing
+  // (only the timer, which runs locally), so poll slowly then; poll faster while waiting for others.
+  function pollDelay() {
+    const st = S.st;
+    if (!st || st.phase === "lobby") return 3000;
+    if (st.phase !== "play") return 5000;
+    if (!st.you) return 2500;
+    return st.you.moved ? 2000 : 4000;
+  }
   function startPoll() {
     stopPoll();
-    S.poll = setInterval(() => { if (!document.hidden) refresh(false).catch(() => {}); }, 1500);
+    const loop = () => {
+      S.poll = setTimeout(async () => {
+        if (!document.hidden) await refresh(false).catch(() => {});
+        if (S.poll) loop();
+      }, pollDelay());
+    };
+    loop();
     S.timer = setInterval(tickTimer, 250);
   }
   document.addEventListener("visibilitychange", () => { if (!document.hidden && S.poll && S.code) refresh(false).catch(() => {}); });
-  function stopPoll() { clearInterval(S.poll); clearInterval(S.timer); S.poll = S.timer = null; }
+  function stopPoll() { clearTimeout(S.poll); clearInterval(S.timer); S.poll = S.timer = null; }
 
   function render() {
     const st = S.st;
@@ -347,7 +374,8 @@
     $("secs").textContent = `${Math.ceil(left)}s`;
     $("timerFill").style.width = `${Math.min(100, (100 * left) / st.roundSeconds)}%`;
     $("timer").classList.toggle("low", left < 8);
-    if (left <= 0) refresh(false).catch(() => {});
+    // time is up: ask for the next round, at most once a second (the server closes it on its timer)
+    if (left <= 0 && Date.now() - (S.lastDue || 0) >= 1000) { S.lastDue = Date.now(); refresh(false).catch(() => {}); }
   }
 
   // ---------- end ----------

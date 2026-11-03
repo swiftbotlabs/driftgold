@@ -7,7 +7,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "wrangler dev --ip 127.0.0.1 --port 8797",
-    "test": "node --test test/engine.test.mjs",
+    "test": "node --test test/engine.test.mjs test/match.test.mjs",
     "test:api": "bash test/run_api.sh",
     "sim": "node sim/balance.mjs 2000",
     "deploy": "wrangler deploy"

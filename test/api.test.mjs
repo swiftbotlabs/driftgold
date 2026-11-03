@@ -160,11 +160,16 @@ test("bad input gets clear errors", async () => {
     [await call("POST", `/api/match/${code}/move`, { cove: "0", oars: 1 }, tok), 400, "bad_move"],
     [await call("POST", `/api/match/${code}/join`, { name: "Late" }), 409, "not_joinable"],
     [await call("POST", `/api/match/${code}/start`, {}, "nottheright1"), 403, "bad_token"],
+    [await call("GET", `/api/match/${code}?token=${tok}`), 400, "token_in_url"],
   ];
   for (const [r, status, code2] of cases) {
     assert.equal(r.status, status, `${status} ${code2}: got ${r.status} ${r.text.slice(0, 120)}`);
     if (code2) assert.equal(r.json.error.code, code2);
   }
+  // the token also works in a POST body
+  const st0 = (await call("GET", `/api/match/${code}`, undefined, tok)).json;
+  const bodyTok = await call("POST", `/api/match/${code}/move`, { round: st0.round, cove: 0, oars: 0, token: tok });
+  assert.equal(bodyTok.status, 200, bodyTok.text);
   // lowercase codes work
   const lc = await call("GET", `/api/match/${code.toLowerCase()}`);
   assert.equal(lc.status, 200);
@@ -202,16 +207,31 @@ test("Node sample bot plays a whole match", { timeout: 120000 }, () => {
   assert.match(r.stdout, /winner:/);
 });
 
-test("timers alone drive a full match to the end", { skip: !process.env.LONG, timeout: 200000 }, async () => {
-  const c = await call("POST", "/api/match", { players: 4, roundSeconds: 10, name: "Away", start: true });
+test("a match where nobody moves for two rounds is ended and deleted", { timeout: 60000 }, async () => {
+  const c = await call("POST", "/api/match", { players: 2, roundSeconds: 10, name: "Gone", start: true });
   const code = c.json.code;
+  await sleep(11500);
+  assert.equal((await call("GET", `/api/match/${code}`)).status, 200, "one idle round is fine");
+  await sleep(10500);
+  const r = await call("GET", `/api/match/${code}`);
+  assert.equal(r.status, 404, r.text); // deleted by its alarm (or on this read, whichever came first)
+  assert.equal(r.json.error.code, "no_match");
+});
+
+test("round timers drive a full match to the end (human moves every other round)", { skip: !process.env.LONG, timeout: 200000 }, async () => {
+  const c = await call("POST", "/api/match", { players: 4, roundSeconds: 10, name: "Half", start: true });
+  const code = c.json.code, tok = c.json.token;
   const t0 = Date.now();
   let st;
-  do { await sleep(3000); st = (await call("GET", `/api/match/${code}`)).json; } while (st.phase === "play" && Date.now() - t0 < 150000);
+  do {
+    st = (await call("GET", `/api/match/${code}`, undefined, tok)).json;
+    if (st.phase === "play" && st.round % 2 === 1 && !st.you.moved) await call("POST", `/api/match/${code}/move`, { round: st.round, cove: 0, oars: 0 }, tok);
+    await sleep(2000);
+  } while (st.phase === "play" && Date.now() - t0 < 150000);
   assert.equal(st.phase, "over");
   const secs = (Date.now() - t0) / 1000;
   assert.ok(secs < 8 * 10 + 15, `took ${secs}s`);
   const log = (await call("GET", `/api/match/${code}/log`)).json;
   assert.equal(log.rounds.length, 8);
-  assert.ok(log.rounds.every((r) => r.moves[0].auto), "the away human was auto-played every round");
+  assert.ok(log.rounds.filter((r) => r.moves[0].auto).length === 4, "even rounds were auto-played");
 });

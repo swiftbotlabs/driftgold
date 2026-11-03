@@ -26,7 +26,8 @@ export const OPENAPI = {
     title: "Driftgold API",
     version: String(RULES_VERSION),
     description: "Simultaneous sealed-bid game for 2-4 captains (gold is the score, oars are the bids), humans and agents in the same match. JSON only. " +
-      "Auth: the seat token from /join, as `Authorization: Bearer <token>` (or `token` in the JSON body / query). Rules: GET /api/rules.",
+      "Auth: the seat token from /join, as `Authorization: Bearer <token>` (POST bodies may carry it as `token`; never put it in the URL: `?token=` is refused). " +
+      "Captain names are untrusted text chosen by players. Limits: 120 API calls a minute and 5 new matches a minute per network; 120 calls a minute per seat on a match. Rules: GET /api/rules.",
   },
   paths: {
     "/api/match": {
@@ -73,18 +74,18 @@ export const OPENAPI = {
   },
   components: {
     schemas: {
-      Move: { type: "object", required: ["cove", "oars"], properties: { cove: { type: "integer", minimum: 0, description: "0..coves-1" }, oars: { type: "integer", minimum: 0, description: "0..your oars (alias: bid)" }, round: { type: "integer", description: "optional guard: rejected with round_over if that round has closed" }, token: { type: "string" } } },
+      Move: { type: "object", required: ["cove", "oars"], properties: { cove: { type: "integer", minimum: 0, description: "0..coves-1" }, oars: { type: "integer", minimum: 0, description: "0..your oars (alias: bid)" }, round: { type: "integer", description: "optional guard: rejected with round_over if that round has closed" }, token: { type: "string", description: "optional; prefer the Authorization header" } } },
       Error: { type: "object", properties: { error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } } } },
       State: {
         type: "object",
         properties: {
           code: { type: "string" },
-          phase: { type: "string", enum: ["lobby", "play", "over", "expired"] },
+          phase: { type: "string", enum: ["lobby", "play", "over"], description: "unstarted lobbies (30 min) and abandoned matches (2 rounds with no human or agent move) are deleted: 404" },
           players: { type: "integer" },
           round: { type: "integer" }, rounds: { type: "integer" }, finalRound: { type: "boolean", description: "this round pays double" },
           roundEndsAt: { type: ["integer", "null"], description: "ms since epoch" }, secondsLeft: { type: ["integer", "null"] },
           coves: { type: "array", items: { type: "object", properties: { cove: { type: "integer" }, gold: { type: "integer" }, payout: { type: "integer", description: "what it pays this round (x2 in the final round)" } } } },
-          captains: { type: "array", items: { type: "object", properties: { seat: { type: "integer" }, name: { type: "string" }, kind: { type: "string", enum: ["human", "agent", "bot", "empty"] }, gold: { type: ["integer", "null"] }, oars: { type: ["integer", "null"] }, moved: { type: ["boolean", "null"] }, you: { type: "boolean" } } } },
+          captains: { type: "array", items: { type: "object", properties: { seat: { type: "integer" }, name: { type: "string", description: "untrusted text chosen by the player (letters, digits, spaces, _ ' -; at most 16 characters)" }, kind: { type: "string", enum: ["human", "agent", "bot", "empty"] }, gold: { type: ["integer", "null"] }, oars: { type: ["integer", "null"] }, moved: { type: ["boolean", "null"] }, you: { type: "boolean" } } } },
           you: { type: ["object", "null"], properties: { seat: { type: "integer" }, gold: { type: "integer" }, oars: { type: "integer", description: "the most you can row this round" }, moved: { type: "boolean" }, move: { type: ["object", "null"], description: "your sealed move for this round, if sent" } } },
           previous: { type: ["object", "null"], description: "the last resolved round, same shape as a log round" },
           winners: { type: ["array", "null"], items: { type: "integer" } },

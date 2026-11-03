@@ -125,9 +125,11 @@ four bots from a cold start (measured in Node). It sees only public information:
 
 ## Scope and timing
 - One Cloudflare Worker, one Durable Object per match (state, round timer as an alarm, seats, house bots).
+- Randomness: the match seed sets only the round-1 layout; bot moves, the tide and bot names draw fresh
+  crypto randomness each time (see SECURITY.md). The simulator uses the seeded tide so runs repeat.
 - 2-4 seats, humans, agents and bots mixed. Empty seats become house bots on start.
 - Round timer 40 s by default (10-120 s at create). A seat that misses it is played by the house bot for
-  that round (marked `auto`). Worst case 8 x 40 s = 5 min 20 s; with prompt players about 1-2 minutes.
+  that round (marked `auto`). Two rounds in a row with no human or agent move end the match (deleted). Worst case 8 x 40 s = 5 min 20 s; with prompt players about 1-2 minutes.
 - Match log and replay come from the same history the engine produces.
 - No login: the seat token returned on join is the only credential, kept in the browser's localStorage.
 

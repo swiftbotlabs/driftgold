@@ -17,9 +17,28 @@ import json
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 DEFAULT_BASE = "https://driftgold.swiftbotlab.workers.dev"
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow redirects: a redirect must not carry our seat token to another host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+def check_base(base):
+    u = urllib.parse.urlsplit(base)
+    local = u.hostname in ("127.0.0.1", "localhost", "::1")
+    if u.scheme != "https" and not (u.scheme == "http" and local):
+        sys.exit("refusing a non-https server (http is only allowed for localhost)")
+    return base.rstrip("/")
 
 
 def call(base, method, path, body=None, token=None):
@@ -29,10 +48,16 @@ def call(base, method, path, body=None, token=None):
     if token:
         req.add_header("authorization", "Bearer " + token)
     try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return r.status, json.loads(r.read())
+        with _OPENER.open(req, timeout=15) as r:
+            status, raw = r.status, r.read(65536)
     except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read() or b"{}")
+        status, raw = e.code, e.read(65536)
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        return 0, {"error": {"code": "network", "message": str(e)}}
+    try:
+        return status, json.loads(raw or b"{}")
+    except json.JSONDecodeError:
+        return status, {"error": {"code": "not_json", "message": f"HTTP {status} with a non-JSON body"}}
 
 
 def choose(state):
@@ -56,7 +81,7 @@ def main():
     ap.add_argument("--create", type=int, choices=[2, 3, 4], help="create a match with this many seats and start it")
     ap.add_argument("--name", default="SampleBot")
     a = ap.parse_args()
-    base = a.base.rstrip("/")
+    base = check_base(a.base)
 
     if a.create:
         st, r = call(base, "POST", "/api/match", {"players": a.create, "name": a.name, "kind": "agent", "start": True})

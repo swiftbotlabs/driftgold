@@ -2,12 +2,17 @@
 import { Match } from "./match.js";
 import { RULES, OPENAPI } from "./docs.js";
 import { configFor, RULES_VERSION } from "./engine.js";
+import { ipBucket } from "./ip.js";
 
 export { Match };
 
 const CODE_RE = /^[A-HJ-NP-Z2-9]{5}$/;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const TOKEN_RE = /^[0-9a-f]{36}$/;
 const MAX_BODY = 2048;
+const API_PER_MIN = 120; // per client address bucket (IPv4 address or IPv6 /64), all API calls
+const CREATE_PER_MIN = 5; // new matches per client address bucket
+const CACHE_MS = { state: 1000, log: 2000 }; // token-less reads are shared for this long per isolate
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET, POST, OPTIONS",
@@ -16,24 +21,63 @@ const CORS = {
 };
 const SEC = { "x-content-type-options": "nosniff", "cache-control": "no-store" };
 
-// Best-effort per-isolate limiter (Cloudflare runs many isolates; the match object has its own cap too).
-const buckets = new Map();
-function rateLimited(ip, kind, limit) {
-  const now = Date.now();
-  const key = kind + ":" + ip;
-  let b = buckets.get(key);
-  if (!b || now - b.t > 60000) b = { t: now, n: 0 };
-  b.n++;
-  buckets.set(key, b);
-  if (buckets.size > 5000) for (const [k, v] of buckets) if (now - v.t > 60000) buckets.delete(k);
-  return b.n > limit;
+class HttpError extends Error {
+  constructor(status, code, message) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
 }
 
-function json(body, status = 200) {
-  return new Response(JSON.stringify(body, null, 1), { status, headers: { "content-type": "application/json; charset=utf-8", ...CORS, ...SEC } });
+function json(body, status = 200, extra = {}) {
+  return new Response(JSON.stringify(body, null, 1), { status, headers: { "content-type": "application/json; charset=utf-8", ...CORS, ...SEC, ...extra } });
 }
-function fail(status, code, message) {
-  return json({ error: { code, message } }, status);
+function fail(status, code, message, extra) {
+  return json({ error: { code, message } }, status, extra);
+}
+
+async function sha256hex(text) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+// rate-limit keys are hashed, so no address is handed to the limiter or the match object in clear
+const clientKey = async (request) => (await sha256hex("driftgold-ip:" + ipBucket(request.headers.get("cf-connecting-ip")))).slice(0, 32);
+
+// Cloudflare rate-limiting binding when deployed; a per-isolate counter in local dev and tests.
+const memLimits = new Map();
+async function limited(env, binding, key, limit) {
+  const rl = env[binding];
+  if (rl && typeof rl.limit === "function") {
+    try {
+      const { success } = await rl.limit({ key });
+      return !success;
+    } catch {
+      /* fall through to the local counter */
+    }
+  }
+  const now = Date.now();
+  const k = binding + ":" + key;
+  const e = memLimits.get(k);
+  if (!e || e.reset < now) {
+    if (memLimits.size > 5000) memLimits.clear();
+    memLimits.set(k, { n: 1, reset: now + 60000 });
+    return false;
+  }
+  e.n++;
+  return e.n > limit;
+}
+
+// Short shared cache for reads without a token (spectators, replays): many viewers, one object call.
+const readCache = new Map();
+function cached(key) {
+  const e = readCache.get(key);
+  if (e && e.exp > Date.now()) return e;
+  if (e) readCache.delete(key);
+  return null;
+}
+function remember(key, status, body, ms) {
+  if (readCache.size > 500) readCache.clear();
+  readCache.set(key, { status, body, exp: Date.now() + ms });
 }
 
 async function readBody(request) {
@@ -75,17 +119,8 @@ async function readBody(request) {
   return v;
 }
 
-class HttpError extends Error {
-  constructor(status, code, message) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-}
-
 function bearer(request) {
-  const h = request.headers.get("authorization") || "";
-  const m = /^Bearer\s+([A-Za-z0-9]{8,80})$/.exec(h.trim());
+  const m = /^Bearer\s+(\S{1,100})$/.exec((request.headers.get("authorization") || "").trim());
   return m ? m[1] : null;
 }
 
@@ -95,18 +130,22 @@ function randomCode() {
   return [...b].map((x) => CODE_ALPHABET[x % CODE_ALPHABET.length]).join("");
 }
 
-async function callMatch(env, code, op, payload, query = "") {
+// The seat token and the client key travel to the match object in headers, never in its URL.
+async function callMatch(env, code, op, payload, token, ckey) {
   const stub = env.MATCH.get(env.MATCH.idFromName(code));
-  const init = payload === undefined ? { method: "GET" } : { method: "POST", body: JSON.stringify(payload), headers: { "content-type": "application/json" } };
-  const r = await stub.fetch(`https://match/${op}${query}`, init);
+  const headers = { "x-client-key": ckey };
+  if (token && TOKEN_RE.test(token)) headers["x-seat-token"] = token;
+  const init = payload === undefined ? { method: "GET", headers } : { method: "POST", body: JSON.stringify(payload), headers: { ...headers, "content-type": "application/json" } };
+  const r = await stub.fetch(`https://match/${op}`, init);
   return { status: r.status, body: await r.json() };
 }
 
 async function api(request, env, url) {
   const parts = url.pathname.replace(/\/+$/, "").split("/").filter(Boolean); // ["api", ...]
-  const ip = request.headers.get("cf-connecting-ip") || "local";
   const method = request.method;
-  if (rateLimited(ip, "api", 600)) return fail(429, "rate_limited", "slow down: max 600 API calls per minute");
+  const ckey = await clientKey(request);
+  if (await limited(env, "RL_API", ckey, Number(env.API_PER_MIN) || API_PER_MIN)) return fail(429, "rate_limited", `slow down: at most ${API_PER_MIN} API calls a minute per network`, { "retry-after": "60" });
+  if (url.searchParams.has("token")) return fail(400, "token_in_url", "send the seat token as Authorization: Bearer <token>, not in the URL");
 
   if (parts.length === 1 && method === "GET")
     return json({ name: "Driftgold API", rulesVersion: RULES_VERSION, docs: "/api/openapi.json", rules: "/api/rules",
@@ -118,33 +157,23 @@ async function api(request, env, url) {
 
   if (parts.length === 2) {
     if (method !== "POST") return fail(405, "method", "use POST to create a match");
-    if (rateLimited(ip, "create", 20)) return fail(429, "rate_limited", "max 20 new matches per minute");
+    if (await limited(env, "RL_CREATE", ckey, Number(env.CREATE_PER_MIN) || CREATE_PER_MIN)) return fail(429, "rate_limited", `at most ${CREATE_PER_MIN} new matches a minute per network`, { "retry-after": "60" });
     const body = await readBody(request);
     const players = body.players === undefined ? 4 : body.players;
     if (!Number.isInteger(players) || players < 2 || players > 4) return fail(400, "bad_players", "players must be 2, 3 or 4");
     const roundSeconds = body.roundSeconds === undefined ? 40 : body.roundSeconds;
     if (!Number.isInteger(roundSeconds) || roundSeconds < 10 || roundSeconds > 120) return fail(400, "bad_timer", "roundSeconds must be an integer 10-120");
     configFor(players);
-    let code = null;
-    for (let i = 0; i < 6 && !code; i++) {
-      const c = randomCode();
-      const seedArr = new Uint32Array(1);
-      crypto.getRandomValues(seedArr);
-      const r = await callMatch(env, c, "init", { code: c, players, roundSeconds, seed: seedArr[0] });
-      if (r.status === 200) code = c;
+    const join = body.join !== false && (body.name !== undefined || body.join === true);
+    const payload = { players, roundSeconds, join, start: join && body.start === true, name: body.name, kind: body.kind };
+    for (let i = 0; i < 6; i++) {
+      const code = randomCode();
+      const r = await callMatch(env, code, "create", { ...payload, code }, null, ckey);
+      if (r.status === 409) continue;
+      if (r.status !== 200) return json(r.body, r.status);
+      return json({ code, players, roundSeconds, url: `${url.origin}/?m=${code}`, ...r.body }, 201);
     }
-    if (!code) return fail(503, "busy", "could not allocate a match code, try again");
-    const out = { code, players, roundSeconds, url: `${url.origin}/?m=${code}` };
-    if (body.join !== false && (body.name !== undefined || body.join === true)) {
-      const j = await callMatch(env, code, "join", { name: body.name, kind: body.kind });
-      if (j.status !== 200) return json(j.body, j.status);
-      Object.assign(out, { seat: j.body.seat, token: j.body.token, state: j.body.state });
-      if (body.start === true) {
-        const s = await callMatch(env, code, "start", { token: j.body.token });
-        out.state = s.body.state;
-      }
-    }
-    return json(out, 201);
+    return fail(503, "busy", "could not allocate a match code, try again");
   }
 
   const code = (parts[2] || "").toUpperCase();
@@ -155,16 +184,23 @@ async function api(request, env, url) {
   if (!Object.hasOwn(routes, op)) return fail(404, "not_found", "unknown endpoint");
   if (routes[op] !== method) return fail(405, "method", `use ${routes[op]} for ${op}`);
   if (method === "GET") {
-    const token = bearer(request) || url.searchParams.get("token");
-    const q = token && /^[A-Za-z0-9]{8,80}$/.test(token) ? `?token=${token}` : "";
-    const r = await callMatch(env, code, op, undefined, q);
+    const token = bearer(request);
+    const key = `${code}:${op}`;
+    if (!token) {
+      const hit = cached(key);
+      if (hit) return json(hit.body, hit.status);
+    }
+    const r = await callMatch(env, code, op, undefined, token, ckey);
+    if (!token && r.status === 200) remember(key, r.status, r.body, CACHE_MS[op]);
     return json(r.body, r.status);
   }
   const body = await readBody(request);
-  const payload = { token: bearer(request) || (typeof body.token === "string" ? body.token : null) };
-  if (op === "join") Object.assign(payload, { name: body.name, kind: body.kind });
-  if (op === "move") Object.assign(payload, { cove: body.cove, oars: body.oars !== undefined ? body.oars : body.bid, round: body.round });
-  const r = await callMatch(env, code, op, payload);
+  const token = bearer(request) || (typeof body.token === "string" ? body.token : null);
+  let payload = {};
+  if (op === "join") payload = { name: body.name, kind: body.kind };
+  if (op === "move") payload = { cove: body.cove, oars: body.oars !== undefined ? body.oars : body.bid, round: body.round };
+  const r = await callMatch(env, code, op, payload, token, ckey);
+  readCache.delete(`${code}:state`);
   return json(r.body, r.status);
 }
 

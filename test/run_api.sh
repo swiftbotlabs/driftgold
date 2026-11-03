@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 WRANGLER="${WRANGLER:-wrangler}"
 STATE="$(mktemp -d "${TMPDIR:-/tmp}/driftgold-test.XXXXXX")"
 export WRANGLER_SEND_METRICS=false XDG_CONFIG_HOME="$STATE/xdg" CI=1
-"$WRANGLER" dev --ip 127.0.0.1 --port 8799 --persist-to "$STATE/state" > "$STATE/dev.log" 2>&1 &
+"$WRANGLER" dev --config test/wrangler.test.toml --ip 127.0.0.1 --port 8799 --persist-to "$STATE/state" > "$STATE/dev.log" 2>&1 &
 PID=$!
 trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; rm -rf "$STATE"' EXIT
 for _ in $(seq 1 60); do curl -sf -m 2 http://127.0.0.1:8799/api >/dev/null && break; sleep 1; done

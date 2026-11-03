@@ -102,7 +102,10 @@ export function resolveSite(cfg, value, entrants) {
 }
 
 // Resolve one round. moves[seat] = {site, bid}. Returns a NEW state; the input is not mutated.
-export function resolveRound(g0, moves) {
+// opts.tideSeed: seed for this round's tide. The server passes fresh randomness every round; without it
+// the tide derives from the match seed and round (deterministic, used by the simulator and tests).
+// Either way the tide is stored in the history, so a log replays exactly.
+export function resolveRound(g0, moves, opts = {}) {
   if (g0.over) throw new Error("match is over");
   const n = g0.cfg.players;
   if (!Array.isArray(moves) || moves.length !== n) throw new Error("need one move per seat");
@@ -116,7 +119,7 @@ export function resolveRound(g0, moves) {
   const pots = g0.pots.slice();
   const results = [];
   // The tide: each untaken cove gains a random amount in cfg.tide (inclusive), fixed by the match seed.
-  const tr = rng(((g0.seed ?? 0) ^ Math.imul(g0.round, 0x9e3779b1)) >>> 0);
+  const tr = rng(opts.tideSeed !== undefined ? opts.tideSeed >>> 0 : ((g0.seed ?? 0) ^ Math.imul(g0.round, 0x9e3779b1)) >>> 0);
   const tide = Array.from({ length: cfg.sites }, () => cfg.tide[0] + Math.floor(tr() * (cfg.tide[1] - cfg.tide[0] + 1)));
   for (let site = 0; site < cfg.sites; site++) {
     const here = [];

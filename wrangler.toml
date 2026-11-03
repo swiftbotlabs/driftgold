@@ -1,5 +1,5 @@
 # Driftgold: one Worker (API + static front end) and one Durable Object per match.
-# Deploy: products/rehost/deploy.py products/tm-game   (local dev: wrangler dev)
+# Deploy: products/rehost/deploy.py products/tm-game   (local dev: ./dev.sh)
 name = "driftgold"
 main = "src/worker.js"
 compatibility_date = "2026-10-01"
@@ -17,6 +17,18 @@ class_name = "Match"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Match"]
+
+# Per-network limits (key: hashed IPv4 address or IPv6 /64). Free-plan quotas are account-wide, so one
+# client must not be able to spend them. Period must be 10 or 60 seconds.
+[[ratelimits]]
+name = "RL_API"
+namespace_id = "42101"
+simple = { limit = 120, period = 60 }
+
+[[ratelimits]]
+name = "RL_CREATE"
+namespace_id = "42102"
+simple = { limit = 5, period = 60 }
 
 [observability]
 enabled = true

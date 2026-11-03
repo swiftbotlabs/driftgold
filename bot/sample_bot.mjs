@@ -4,13 +4,21 @@
 //   node bot/sample_bot.mjs --code K7QPX [--base URL]
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) => (a.startsWith("--") ? [...acc, [a.slice(2), all[i + 1]]] : acc), []));
 const BASE = (args.base || "https://driftgold.swiftbotlab.workers.dev").replace(/\/+$/, "");
+{
+  const u = new URL(BASE);
+  const local = ["127.0.0.1", "localhost", "[::1]"].includes(u.hostname);
+  if (u.protocol !== "https:" && !(u.protocol === "http:" && local)) { console.log("refusing a non-https server (http is only allowed for localhost)"); process.exit(2); }
+}
 const NAME = args.name || "SampleBotJS";
 
 async function call(method, path, body, token) {
   const headers = { "content-type": "application/json" };
   if (token) headers.authorization = `Bearer ${token}`;
-  const r = await fetch(BASE + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  return { status: r.status, json: await r.json() };
+  // redirect: "error" so a redirect can never carry the seat token to another host
+  const r = await fetch(BASE + path, { method, headers, body: body ? JSON.stringify(body) : undefined, redirect: "error" });
+  let json;
+  try { json = await r.json(); } catch { json = { error: { code: "not_json", message: `HTTP ${r.status} with a non-JSON body` } }; }
+  return { status: r.status, json };
 }
 
 // Richest cove; row just over half its gold when we hold more oars than any rival, else nothing.
