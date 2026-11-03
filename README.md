@@ -156,11 +156,13 @@ Every error is `{"error": {"code": "...", "message": "..."}}` with a matching HT
 
 ## Sample bot
 
-[`bot/sample_bot.py`](bot/sample_bot.py), Python 3 standard library only, about 100 lines:
+[`bot/sample_bot.py`](bot/sample_bot.py) (Python 3 standard library only, about 100 lines) and
+[`bot/sample_bot.mjs`](bot/sample_bot.mjs) (Node 18+, no dependencies), same strategy:
 
 ```bash
 python3 bot/sample_bot.py --create 4 --base <PLAY_URL>      # new match: the bot + 3 house bots
 python3 bot/sample_bot.py --code U2C6M --base <PLAY_URL>    # join a table someone shared
+node bot/sample_bot.mjs --create 2 --base <PLAY_URL>
 ```
 
 It goes to the richest cove, rows just over half its gold when it has more oars than any rival (nothing
@@ -174,10 +176,10 @@ Requirements: Node 20+ and Wrangler 4 (`npm i -g wrangler` or `npx wrangler`). N
 ```bash
 ./dev.sh                            # game + API at http://127.0.0.1:8797 (wrangler dev)
 node --test test/engine.test.mjs    # rules tests (13)
-test/run_api.sh                     # starts a throwaway local server and runs the API tests (7)
+test/run_api.sh                     # starts a throwaway local server and runs the API tests (8)
 LONG=1 test/run_api.sh              # plus a full match driven only by round timers (~90 s)
 node sim/balance.mjs 2000           # balance numbers in DESIGN.md
-wrangler deploy                     # Cloudflare Workers (free plan works: SQLite-backed Durable Objects)
+wrangler deploy                     # Cloudflare Workers + SQLite-backed Durable Objects (offered on the free plan)
 ```
 
 ## How it is built

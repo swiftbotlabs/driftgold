@@ -157,6 +157,7 @@
     S.poll = setInterval(() => { if (!document.hidden) refresh(false).catch(() => {}); }, 1500);
     S.timer = setInterval(tickTimer, 250);
   }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && S.poll && S.code) refresh(false).catch(() => {}); });
   function stopPoll() { clearInterval(S.poll); clearInterval(S.timer); S.poll = S.timer = null; }
 
   function render() {

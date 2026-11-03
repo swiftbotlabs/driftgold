@@ -195,6 +195,13 @@ test("sample bot plays a whole match", { timeout: 120000 }, () => {
   assert.match(r.stdout, /winner:/);
 });
 
+test("Node sample bot plays a whole match", { timeout: 120000 }, () => {
+  const r = spawnSync(process.execPath, ["bot/sample_bot.mjs", "--create", "2", "--base", BASE], { encoding: "utf8", timeout: 110000 });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /round 8:/);
+  assert.match(r.stdout, /winner:/);
+});
+
 test("timers alone drive a full match to the end", { skip: !process.env.LONG, timeout: 200000 }, async () => {
   const c = await call("POST", "/api/match", { players: 4, roundSeconds: 10, name: "Away", start: true });
   const code = c.json.code;
